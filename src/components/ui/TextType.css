@@ -1,6 +1,7 @@
 .text-type {
   display: inline-block;
   white-space: pre-wrap;
+  color: white;
 }
 
 .text-type__cursor {
@@ -8,6 +9,7 @@
   display: inline-block;
   opacity: 1;
   font-weight: 100;
+  color: white;
 }
 
 .text-type__cursor--hidden {

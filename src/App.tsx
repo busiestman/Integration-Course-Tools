@@ -3,6 +3,8 @@ import TrueFocus from './components/ui/TrueFocus';
 import TextType from './components/ui/TextType';
 import ClickSpark from './components/ui/ClickSpark';
 
+import './App.css';
+
 type Language = 'en' | 'de';
 type TabId = 'attendance' | 'wheel1' | 'wheel2' | 'groups';
 
@@ -93,6 +95,8 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
+const getRandomStartRotation = () => Math.floor(Math.random() * 360);
+
 const SECTION_LABEL_CLASS = 'text-gray-200 text-xl md:text-2xl font-bold font-body';
 
 const WHEEL_SIZES = {
@@ -119,7 +123,7 @@ const WheelVisual = ({
     return (
       <div className={`relative ${sizeClass} max-w-full mx-auto`}>
         <div className="w-full h-full rounded-full border border-white/20 bg-white/5 flex items-center justify-center">
-          <span className="text-gray-400 font-display text-2xl font-semibold">{emptyLabel}</span>
+          <span className="text-slate-400 text-2xl font-semibold">{emptyLabel}</span>
         </div>
       </div>
     );
@@ -128,12 +132,14 @@ const WheelVisual = ({
   const step = 360 / items.length;
 
   const colors = [
-    'rgba(239, 68, 68, 0.15)',
-    'rgba(34, 197, 94, 0.15)',
-    'rgba(249, 115, 22, 0.15)',
-    'rgba(59, 130, 246, 0.15)',
-    'rgba(168, 85, 247, 0.15)',
-  ];
+  'rgba(255, 59,  59,  0.75)',
+  'rgba(52,  211, 153, 0.75)',
+  'rgba(251, 146, 60,  0.75)',
+  'rgba(96,  165, 250, 0.75)',
+  'rgba(196, 121, 255, 0.75)',
+  'rgba(250, 204, 21,  0.75)',
+  'rgba(20,  184, 166, 0.75)',
+];
 
   const gradientStr = items.map((_, i) => {
     const color = colors[i % colors.length];
@@ -159,6 +165,30 @@ const WheelVisual = ({
           transition: isSpinning ? 'transform 4s cubic-bezier(0.1, 0.7, 0.1, 1)' : 'none'
         }}
       >
+        {items.length > 1 && (
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox="0 0 100 100"
+            style={{ zIndex: 5 }}
+          >
+            {items.map((_, i) => {
+              const angle = i * step;
+              const radians = ((angle - 90) * Math.PI) / 180;
+              const x2 = 50 + 50 * Math.cos(radians);
+              const y2 = 50 + 50 * Math.sin(radians);
+              return (
+                <line
+                  key={i}
+                  x1="50" y1="50"
+                  x2={x2} y2={y2}
+                  stroke="rgba(255,255,255,0.4)"
+                  strokeWidth="0.6"
+                />
+              );
+            })}
+          </svg>
+        )}
+      
         {items.map((item, i) => {
           const angle = (i * step) + (step / 2);
           const displayLabel = item.label.trim();
@@ -205,7 +235,11 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabId>('wheel2');
   const [students, setStudents] = useState(INITIAL_STUDENTS);
-  const [wheelStudents, setWheelStudents] = useState(INITIAL_STUDENTS.filter(s => s.present));
+  
+  // Изолированные состояния для списков студентов
+  const [wheel1Students, setWheel1Students] = useState(INITIAL_STUDENTS.filter(s => s.present));
+  const [wheel2Students, setWheel2Students] = useState(INITIAL_STUDENTS.filter(s => s.present));
+  
   const [questions, setQuestions] = useState<{id: string, text: string}[]>([]);
   const [newQuestionStr, setNewQuestionStr] = useState("");
 
@@ -217,10 +251,15 @@ export default function App() {
       if (!target) return prevStudents;
 
       const nextPresent = !target.present;
-      setWheelStudents(prevWheel => {
+      
+      const updateWheelPool = (prevWheel: typeof INITIAL_STUDENTS) => {
         if (!nextPresent) return prevWheel.filter(s => s.id !== id);
         return prevWheel.some(s => s.id === id) ? prevWheel : [...prevWheel, { ...target, present: true }];
-      });
+      };
+
+      // Синхронизируем оба колеса при изменении присутствия
+      setWheel1Students(updateWheelPool);
+      setWheel2Students(updateWheelPool);
 
       return prevStudents.map(st => st.id === id ? { ...st, present: nextPresent } : st);
     });
@@ -238,7 +277,7 @@ export default function App() {
   const [groups, setGroups] = useState<typeof INITIAL_STUDENTS[]>([]);
 
   const handleSpinLeft = () => {
-    if (wheelStudents.length === 0 || spinning1) return;
+    if (wheel1Students.length === 0 || spinning1) return;
     setSpinning1(true);
     setResultStudent(null);
 
@@ -247,8 +286,8 @@ export default function App() {
       spinSoundRef.current.play().catch(e => console.log("Sound play blocked", e));
     }
 
-    const winnerIndex = Math.floor(Math.random() * wheelStudents.length);
-    const sliceAngle = 360 / wheelStudents.length;
+    const winnerIndex = Math.floor(Math.random() * wheel1Students.length);
+    const sliceAngle = 360 / wheel1Students.length;
     
     const targetAngle = 360 - ((winnerIndex * sliceAngle) + (sliceAngle / 2));
     
@@ -260,7 +299,7 @@ export default function App() {
     });
 
     setTimeout(() => {
-      setResultStudent(wheelStudents[winnerIndex]);
+      setResultStudent(wheel1Students[winnerIndex]);
       setSpinning1(false);
       
       if (spinSoundRef.current) {
@@ -270,7 +309,7 @@ export default function App() {
   };
 
   const handleSpinBoth = () => {
-    if (wheelStudents.length === 0 || questions.length === 0 || spinning1 || spinning2) return;
+    if (wheel2Students.length === 0 || questions.length === 0 || spinning1 || spinning2) return;
 
     if (spinSoundRef.current) {
       spinSoundRef.current.currentTime = 0;
@@ -278,8 +317,8 @@ export default function App() {
     }
 
     setSpinning1(true); setResultStudent(null);
-    const winnerIndex1 = Math.floor(Math.random() * wheelStudents.length);
-    const sliceAngle1 = 360 / wheelStudents.length;
+    const winnerIndex1 = Math.floor(Math.random() * wheel2Students.length);
+    const sliceAngle1 = 360 / wheel2Students.length;
     
     const targetAngle1 = 360 - ((winnerIndex1 * sliceAngle1) + (sliceAngle1 / 2));
     setRotation1(prev => {
@@ -302,7 +341,7 @@ export default function App() {
     });
 
     setTimeout(() => {
-      setResultStudent(wheelStudents[winnerIndex1]);
+      setResultStudent(wheel2Students[winnerIndex1]);
       setResultQuestion(questions[winnerIndex2]);
       setSpinning1(false);
       setSpinning2(false);
@@ -406,7 +445,7 @@ export default function App() {
                   {students.map(s => (
                     <div key={s.id} className="flex items-center justify-between bg-white/5 border border-white/10 p-4 rounded-xl relative z-20">
                       <span className={`text-lg font-semibold ${s.present ? "text-white" : "text-gray-500 line-through"}`}>{s.name}</span>
-                      <button onClick={() => toggleStudentPresence(s.id)} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${s.present ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>{s.present ? t.present : t.absent}</button>
+                      <button onClick={() => toggleStudentPresence(s.id)} className={`glass-btn text-sm ${s.present ? '' : 'danger'}`}>{s.present ? t.present : t.absent}</button>
                     </div>
                   ))}
                 </div>
@@ -414,16 +453,16 @@ export default function App() {
             )}
             {activeTab === 'wheel1' && (
               <div className="flex flex-col items-center text-center gap-3 py-1">
-                <div className={SECTION_LABEL_CLASS}>{t.wheel_students_left} {wheelStudents.length}</div>
-                <WheelVisual size="single" items={wheelStudents.map(s => ({ id: s.id, label: s.name }))} rotation={rotation1} isSpinning={spinning1} emptyLabel={t.empty_wheel} />
+                <div className={SECTION_LABEL_CLASS}>{t.wheel_students_left} {wheel1Students.length}</div>
+                <WheelVisual size="single" items={wheel1Students.map(s => ({ id: s.id, label: s.name }))} rotation={rotation1} isSpinning={spinning1} emptyLabel={t.empty_wheel} />
                 <div className="min-h-[2.5rem] flex items-center justify-center">
                   {resultStudent && !spinning1 && <span className="text-2xl md:text-3xl font-display font-semibold animate-fade-rise text-white">{resultStudent.name}</span>}
                 </div>
-                <button onClick={handleSpinLeft} disabled={spinning1 || wheelStudents.length === 0} className="liquid-glass rounded-full px-8 py-3 text-base md:text-lg font-semibold text-white hover:scale-[1.03] transition-transform disabled:opacity-50 mt-2 relative z-20">{spinning1 ? t.spinning : t.spin_student}</button>
+                <button onClick={handleSpinLeft} disabled={spinning1 || wheel1Students.length === 0} className="glass-btn mt-2 relative z-20">{spinning1 ? t.spinning : t.spin_student}</button>
                 {resultStudent && !spinning1 && (
                   <div className="flex flex-col sm:flex-row gap-3 animate-fade-rise mt-2 relative z-20">
-                    <button onClick={() => { setWheelStudents(prev => prev.filter(s => s.id !== resultStudent.id)); setResultStudent(null); }} className="text-base font-semibold px-6 py-2.5 rounded-full border border-red-500/30 text-red-300 hover:bg-red-500/10 transition-colors">{t.remove_from_wheel}</button>
-                    <button onClick={() => { setWheelStudents(students.filter(s => s.present)); setResultStudent(null); }} className="text-base font-semibold px-6 py-2.5 rounded-full border border-white/20 text-gray-300 hover:bg-white/10 transition-colors">{t.reset_wheel}</button>
+                    <button onClick={() => { setWheel1Students(prev => prev.filter(s => s.id !== resultStudent.id)); setResultStudent(null); }} className="glass-btn danger">{t.remove_from_wheel}</button>
+                    <button onClick={() => { setWheel1Students(students.filter(s => s.present)); setResultStudent(null); }} className="glass-btn">{t.reset_wheel}</button>
                   </div>
                 )}
               </div>
@@ -432,31 +471,34 @@ export default function App() {
               <div className="flex flex-col items-center gap-5 py-1">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 w-full justify-items-center">
                   <div className="flex flex-col items-center gap-3 w-full max-w-[17.5rem] sm:max-w-[18rem] md:max-w-[17.5rem] lg:max-w-full">
-                    <span className={SECTION_LABEL_CLASS}>{t.wheel_students_left} {wheelStudents.length}</span>
-                    <WheelVisual size="double" items={wheelStudents.map(s => ({ id: s.id, label: s.name }))} rotation={rotation1} isSpinning={spinning1} emptyLabel={t.empty_wheel} />
+                    <span className={SECTION_LABEL_CLASS}>{t.wheel_students_left} {wheel2Students.length}</span>
+                    <WheelVisual size="double" items={wheel2Students.map(s => ({ id: s.id, label: s.name }))} rotation={rotation1} isSpinning={spinning1} emptyLabel={t.empty_wheel} />
                     <div className="min-h-[2rem] text-center">
-                      {resultStudent && !spinning1 && <span className="text-xl md:text-2xl font-display font-semibold animate-fade-rise">{resultStudent.name}</span>}
+                      {resultStudent && !spinning1 && <span className="text-xl md:text-2xl font-semibold animate-fade-rise">{resultStudent.name}</span>}
                     </div>
                     {resultStudent && !spinning1 && (
-                      <button onClick={() => { setWheelStudents(prev => prev.filter(s => s.id !== resultStudent.id)); setResultStudent(null); }} className="text-sm font-semibold px-4 py-2 rounded-full border border-red-500/30 text-red-300 hover:bg-red-500/10 relative z-20">{t.remove_from_wheel}</button>
+                      <div className="flex flex-col sm:flex-row gap-2 animate-fade-rise relative z-20">
+                        <button onClick={() => { setWheel2Students(prev => prev.filter(s => s.id !== resultStudent.id)); setResultStudent(null); }} className="glass-btn danger">{t.remove_from_wheel}</button>
+                        <button onClick={() => { setWheel2Students(students.filter(s => s.present)); setResultStudent(null); }} className="glass-btn">{t.reset_wheel}</button>
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col items-center gap-3 w-full max-w-[17.5rem] sm:max-w-[18rem] md:max-w-[17.5rem] lg:max-w-full">
                     <span className={SECTION_LABEL_CLASS}>{t.topics_title} ({questions.length})</span>
                     <WheelVisual size="double" items={questions.map(q => ({ id: q.id, label: q.text }))} rotation={rotation2} isSpinning={spinning2} emptyLabel={t.empty_wheel} />
                     <div className="min-h-[2rem] text-center px-2">
-                      {resultQuestion && !spinning2 && <span className="text-lg md:text-xl font-body font-semibold animate-fade-rise">{resultQuestion.text}</span>}
+                      {resultQuestion && !spinning2 && <span className="text-lg md:text-xl font-semibold animate-fade-rise">{resultQuestion.text}</span>}
                     </div>
                     {resultQuestion && !spinning2 && (
-                      <button onClick={() => { setQuestions(prev => prev.filter(q => q.id !== resultQuestion.id)); setResultQuestion(null); }} className="text-sm font-semibold px-4 py-2 rounded-full border border-red-500/30 text-red-300 hover:bg-red-500/10 relative z-20">{t.remove_topic}</button>
+                      <button onClick={() => { setQuestions(prev => prev.filter(q => q.id !== resultQuestion.id)); setResultQuestion(null); }} className="glass-btn danger relative z-20">{t.remove_topic}</button>
                     )}
                   </div>
                 </div>
                 <div className="flex flex-col items-center w-full max-w-md gap-4 mt-1 border-t border-white/10 pt-6 relative z-20">
-                  <button onClick={handleSpinBoth} disabled={spinning1 || spinning2 || wheelStudents.length === 0 || questions.length === 0} className="liquid-glass rounded-full px-10 py-3 text-white text-lg font-semibold hover:scale-[1.03] transition-transform w-full disabled:opacity-40 disabled:cursor-not-allowed shadow-lg">{spinning1 || spinning2 ? t.spinning : t.spin_both}</button>
+                  <button onClick={handleSpinBoth} disabled={spinning1 || spinning2 || wheel2Students.length === 0 || questions.length === 0} className="glass-btn w-full">{spinning1 || spinning2 ? t.spinning : t.spin_both}</button>
                   <form onSubmit={handleAddQuestion} className="w-full flex gap-2">
-                    <input type="text" value={newQuestionStr} onChange={(e) => setNewQuestionStr(e.target.value)} placeholder={t.add_question_ph} className="bg-white/5 border border-white/20 rounded-xl text-white text-base font-medium px-4 py-3 w-full outline-none focus:border-white/60 transition-colors placeholder:text-gray-500" />
-                    <button type="submit" className="bg-white/10 hover:bg-white/20 px-5 py-3 rounded-xl transition-colors text-base font-semibold">{t.add}</button>
+                    <input type="text" value={newQuestionStr} onChange={(e) => setNewQuestionStr(e.target.value)} placeholder={t.add_question_ph} className="bg-white/5 border border-white/20 rounded-xl text-white text-base font-medium px-4 py-3 w-full outline-none focus:border-white/60 transition-colors placeholder:text-slate-300" />
+                    <button type="submit" className="glass-btn submit">{t.add}</button>
                   </form>
                 </div>
               </div>
@@ -469,7 +511,7 @@ export default function App() {
                     <input type="number" min="1" max={students.filter(s=>s.present).length} value={groupCount} onChange={(e) => setGroupCount(Number(e.target.value))} className="bg-transparent border border-white/20 rounded-xl px-4 py-3 text-white text-lg font-semibold outline-none focus:border-white/60" />
                   </div>
                   <div className="flex flex-col gap-1 pb-3 text-base font-medium text-gray-300 w-full md:w-1/3 text-center">{t.active_students} <span className="text-white text-2xl font-display font-semibold">{students.filter(s=>s.present).length}</span></div>
-                  <button onClick={generateGroups} className="liquid-glass rounded-full px-8 py-3 text-white text-lg font-semibold hover:scale-[1.03] transition-transform w-full md:w-1/3 relative z-20">{t.generate}</button>
+                  <button onClick={generateGroups} className="glass-btn w-full md:w-1/3 relative z-20">{t.generate}</button>
                 </div>
                 {groups.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-rise">
